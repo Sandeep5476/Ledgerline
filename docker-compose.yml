@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ledgerline-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-ledgerline}
+      POSTGRES_USER: ${POSTGRES_USER:-ledger_owner}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-LedgerLocal_2026!}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ledger_owner} -d ${DB_NAME:-ledgerline}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ledgerline-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: ${PORT:-8080}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-ledgerline}
+      DB_PARAMS: ${DB_PARAMS:-}
+      DB_MIGRATION_USER: ${DB_MIGRATION_USER:-ledger_owner}
+      DB_MIGRATION_PASSWORD: ${DB_MIGRATION_PASSWORD:-LedgerLocal_2026!}
+      APP_DB_USER: ${APP_DB_USER:-ledger_app}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-ledger_app_secret_2026}
+      JWT_SECRET: ${JWT_SECRET}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD}
+      SEED_HOLDER_PASSWORD: ${SEED_HOLDER_PASSWORD}
+      SEED_AUDITOR_PASSWORD: ${SEED_AUDITOR_PASSWORD}
+    ports:
+      - "${PORT:-8080}:${PORT:-8080}"
+
+volumes:
+  pgdata:
+
