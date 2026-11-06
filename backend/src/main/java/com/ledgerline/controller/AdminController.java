@@ -18,14 +18,23 @@ import java.util.Map;
 public class AdminController {
 
     private final LedgerService ledgerService;
+    private final com.ledgerline.service.IdempotencyService idempotencyService;
+    private final com.ledgerline.service.AuditService auditService;
 
-    public AdminController(LedgerService ledgerService) {
+    public AdminController(
+        LedgerService ledgerService,
+        com.ledgerline.service.IdempotencyService idempotencyService,
+        com.ledgerline.service.AuditService auditService
+    ) {
         this.ledgerService = ledgerService;
+        this.idempotencyService = idempotencyService;
+        this.auditService = auditService;
     }
 
     @GetMapping("/ping")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Map<String, String>> adminPing() {
+    public ResponseEntity<Map<String, String>> adminPing(@AuthenticationPrincipal UserPrincipal principal) {
+        auditService.logAdminAction(principal.id(), "ADMIN_PING", null, "{}");
         return ResponseEntity.ok(Map.of("status", "ok", "message", "Admin access verified"));
     }
 
@@ -37,39 +46,46 @@ public class AdminController {
         @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
         @AuthenticationPrincipal UserPrincipal principal
     ) {
-        // TODO: Task 3 - Idempotency key handling and deduplication
-
-        LedgerResult result = ledgerService.reverse(
-            entryId,
+        return idempotencyService.execute(
+            idempotencyKey,
             principal.id(),
-            principal.role(),
-            request.reason(),
-            idempotencyKey
+            "POST",
+            "/api/admin/entries/" + entryId + "/reverse",
+            request,
+            () -> {
+                LedgerResult result = ledgerService.reverse(
+                    entryId,
+                    principal.id(),
+                    principal.role(),
+                    request.reason(),
+                    idempotencyKey
+                );
+
+                if (result.success()) {
+                    return ResponseEntity.ok(Map.of(
+                        "status", "SUCCESS",
+                        "reversalEntryId", result.entry().id(),
+                        "originalEntryId", entryId,
+                        "postings", result.postings()
+                    ));
+                }
+
+                HttpStatus status = switch (result.refusalCode()) {
+                    case ALREADY_REVERSED -> HttpStatus.CONFLICT;
+                    case REVERSAL_OVERDRAW -> HttpStatus.UNPROCESSABLE_ENTITY;
+                    case UNAUTHORIZED -> HttpStatus.FORBIDDEN;
+                    case ACCOUNT_NOT_FOUND, INVALID_COMMAND -> HttpStatus.BAD_REQUEST;
+                    default -> HttpStatus.BAD_REQUEST;
+                };
+
+                return ResponseEntity.status(status).body(Map.of(
+                    "status", "REFUSED",
+                    "refusalCode", result.refusalCode(),
+                    "message", result.refusalReason(),
+                    "attemptId", result.attempt().id()
+                ));
+            }
         );
-
-        if (result.success()) {
-            return ResponseEntity.ok(Map.of(
-                "status", "SUCCESS",
-                "reversalEntryId", result.entry().id(),
-                "originalEntryId", entryId,
-                "postings", result.postings()
-            ));
-        }
-
-        HttpStatus status = switch (result.refusalCode()) {
-            case ALREADY_REVERSED -> HttpStatus.CONFLICT;
-            case REVERSAL_OVERDRAW -> HttpStatus.UNPROCESSABLE_ENTITY;
-            case UNAUTHORIZED -> HttpStatus.FORBIDDEN;
-            case ACCOUNT_NOT_FOUND, INVALID_COMMAND -> HttpStatus.BAD_REQUEST;
-            default -> HttpStatus.BAD_REQUEST;
-        };
-
-        return ResponseEntity.status(status).body(Map.of(
-            "status", "REFUSED",
-            "refusalCode", result.refusalCode(),
-            "message", result.refusalReason(),
-            "attemptId", result.attempt().id()
-        ));
     }
 }
 

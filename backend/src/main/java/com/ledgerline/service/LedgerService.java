@@ -27,10 +27,16 @@ public class LedgerService {
 
     private final AccountRepository accountRepository;
     private final LedgerRepository ledgerRepository;
+    private final AuditService auditService;
 
-    public LedgerService(AccountRepository accountRepository, LedgerRepository ledgerRepository) {
+    public LedgerService(
+        AccountRepository accountRepository,
+        LedgerRepository ledgerRepository,
+        AuditService auditService
+    ) {
         this.accountRepository = accountRepository;
         this.ledgerRepository = ledgerRepository;
+        this.auditService = auditService;
     }
 
     /**
@@ -110,6 +116,11 @@ public class LedgerService {
         // 8. Update cached balances on accounts
         accountRepository.updateBalance(fromAccount.id(), newFromBalance);
         accountRepository.updateBalance(toAccount.id(), newToBalance);
+
+        // 9. Record audit log entry in the same transaction
+        String details = String.format("{\"kind\":\"%s\",\"from\":%d,\"to\":%d,\"amount\":%d}",
+            cmd.kind(), fromAccount.id(), toAccount.id(), cmd.amount());
+        auditService.logMoneyMove(cmd.callerId(), entry.id(), details);
 
         log.info("Ledger entry {} successfully committed: {} paise moved from account {} to account {}",
             entry.id(), cmd.amount(), fromAccount.id(), toAccount.id());
@@ -211,6 +222,10 @@ public class LedgerService {
         accountRepository.updateBalance(debitAccount.id(), newDebitBalance);
         accountRepository.updateBalance(creditAccount.id(), newCreditBalance);
 
+        String revDetails = String.format("{\"reversalEntryId\":%d,\"originalEntryId\":%d,\"amount\":%d}",
+            reversalEntry.id(), originalEntry.id(), amount);
+        auditService.logReversal(adminUserId, reversalEntry.id(), revDetails);
+
         log.info("Successfully executed reversal entry {} for original entry {}", reversalEntry.id(), originalEntry.id());
 
         return LedgerResult.success(reversalEntry, List.of(revDebitPosting, revCreditPosting));
@@ -297,6 +312,54 @@ public class LedgerService {
             balanceSnapshot
         );
 
+        String refusalDetails = String.format("{\"attemptId\":%d,\"code\":\"%s\",\"reason\":\"%s\"}",
+            attempt.id(), code != null ? code.name() : "UNKNOWN", reason != null ? reason.replace("\"", "\\\"") : "");
+        auditService.logRefusal(cmd.callerId(), attempt.id(), refusalDetails);
+
         return LedgerResult.refused(attempt, code, reason);
+    }
+
+    /**
+     * Cryptographically verifies the integrity of the ledger_entries hash chain.
+     * Throws SecurityException if any link is broken, forged, or tampered with.
+     */
+    @Transactional(readOnly = true)
+    public void verifyLedgerEntriesChain() {
+        List<LedgerEntry> entries = ledgerRepository.findAllEntriesInOrder();
+        if (entries.isEmpty()) {
+            return;
+        }
+
+        String expectedPrevHash = com.ledgerline.util.HashUtils.GENESIS_HASH;
+
+        for (LedgerEntry entry : entries) {
+            if (!entry.prevHash().equals(expectedPrevHash)) {
+                throw new SecurityException(String.format(
+                    "Ledger chain integrity violation at entry ID %d: expected prev_hash %s but was %s",
+                    entry.id(), expectedPrevHash, entry.prevHash()
+                ));
+            }
+
+            String recomputedHash = LedgerRepository.computeEntryHash(
+                entry.prevHash(),
+                entry.kind().name(),
+                entry.reversesEntryId(),
+                entry.initiatedBy(),
+                entry.idempotencyKey(),
+                entry.reason(),
+                entry.createdAt()
+            );
+
+            if (!entry.hash().equals(recomputedHash)) {
+                throw new SecurityException(String.format(
+                    "Ledger payload tampering violation at entry ID %d: recomputed hash %s does not match recorded hash %s",
+                    entry.id(), recomputedHash, entry.hash()
+                ));
+            }
+
+            expectedPrevHash = entry.hash();
+        }
+
+        log.info("Ledger entries cryptographic chain verified successfully across {} entries.", entries.size());
     }
 }

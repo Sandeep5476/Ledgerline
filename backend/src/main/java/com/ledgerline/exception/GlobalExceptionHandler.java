@@ -55,6 +55,26 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNotFound(ResourceNotFoundException ex) {
+        return buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(IdempotencyValidationException.class)
+    public ResponseEntity<Map<String, Object>> handleIdempotencyValidation(IdempotencyValidationException ex) {
+        return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(IdempotencyConflictException.class)
+    public ResponseEntity<Map<String, Object>> handleIdempotencyConflict(IdempotencyConflictException ex) {
+        return buildErrorResponse(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(IdempotencyPayloadMismatchException.class)
+    public ResponseEntity<Map<String, Object>> handleIdempotencyMismatch(IdempotencyPayloadMismatchException ex) {
+        return buildErrorResponse(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());
+    }
+
     @ExceptionHandler({HttpMessageNotReadableException.class, MaxUploadSizeExceededException.class})
     public ResponseEntity<Map<String, Object>> handleMalformedOrOversized(Exception ex) {
         return buildErrorResponse(HttpStatus.BAD_REQUEST, "Malformed request body or payload exceeds maximum allowed size");

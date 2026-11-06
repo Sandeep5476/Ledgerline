@@ -4,16 +4,28 @@ import com.ledgerline.model.EntryKind;
 import com.ledgerline.model.LedgerAttempt;
 import com.ledgerline.model.LedgerEntry;
 import com.ledgerline.model.Posting;
+import com.ledgerline.util.HashUtils;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Repository for ledger entries, postings, and attempts with cryptographic hash chaining.
+ *
+ * Appends to ledger_entries are serialized via pg_advisory_xact_lock to ensure an un-forkable,
+ * linear cryptographic hash chain.
+ */
 @Repository
 public class LedgerRepository {
+
+    public static final long LEDGER_LOCK_ID = 8847120194827102L;
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -56,11 +68,68 @@ public class LedgerRepository {
         rs.getTimestamp("created_at").toInstant()
     );
 
+    public void acquireLedgerLock() {
+        jdbcTemplate.execute("SELECT pg_advisory_xact_lock(" + LEDGER_LOCK_ID + ")");
+    }
+
+    public String getLatestEntryHash() {
+        String sql = "SELECT hash FROM ledger_entries ORDER BY id DESC LIMIT 1";
+        try {
+            String hash = jdbcTemplate.queryForObject(sql, String.class);
+            return (hash != null && !hash.isBlank()) ? hash : HashUtils.GENESIS_HASH;
+        } catch (EmptyResultDataAccessException e) {
+            return HashUtils.GENESIS_HASH;
+        }
+    }
+
+    public static String computeEntryHash(
+        String prevHash,
+        String kind,
+        Long reversesEntryId,
+        Long initiatedBy,
+        String idempotencyKey,
+        String reason,
+        Instant createdAt
+    ) {
+        String canonical = (prevHash != null ? prevHash : HashUtils.GENESIS_HASH) + "|" +
+                           (kind != null ? kind : "") + "|" +
+                           (reversesEntryId != null ? reversesEntryId.toString() : "") + "|" +
+                           (initiatedBy != null ? initiatedBy.toString() : "") + "|" +
+                           (idempotencyKey != null ? idempotencyKey : "") + "|" +
+                           (reason != null ? reason : "") + "|" +
+                           (createdAt != null ? createdAt.toEpochMilli() : 0);
+        return HashUtils.sha256Hex(canonical);
+    }
+
     public LedgerEntry insertEntry(EntryKind kind, Long reversesEntryId, Long initiatedBy, String idempotencyKey, String reason) {
-        String sql = "INSERT INTO ledger_entries (kind, reverses_entry_id, initiated_by, idempotency_key, reason, created_at) " +
-                     "VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP) " +
+        // Serialise chain append to guarantee strictly linear chain with no forks
+        acquireLedgerLock();
+
+        String prevHash = getLatestEntryHash();
+        Instant createdAt = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        String hash = computeEntryHash(prevHash, kind.name(), reversesEntryId, initiatedBy, idempotencyKey, reason, createdAt);
+
+        String sql = "INSERT INTO ledger_entries (kind, reverses_entry_id, initiated_by, idempotency_key, reason, created_at, prev_hash, hash) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?) " +
                      "RETURNING id, kind, reverses_entry_id, initiated_by, idempotency_key, reason, created_at, prev_hash, hash";
-        return jdbcTemplate.queryForObject(sql, ENTRY_ROW_MAPPER, kind.name(), reversesEntryId, initiatedBy, idempotencyKey, reason);
+        return jdbcTemplate.queryForObject(
+            sql,
+            ENTRY_ROW_MAPPER,
+            kind.name(),
+            reversesEntryId,
+            initiatedBy,
+            idempotencyKey,
+            reason,
+            Timestamp.from(createdAt),
+            prevHash,
+            hash
+        );
+    }
+
+    public List<LedgerEntry> findAllEntriesInOrder() {
+        String sql = "SELECT id, kind, reverses_entry_id, initiated_by, idempotency_key, reason, created_at, prev_hash, hash " +
+                     "FROM ledger_entries ORDER BY id ASC";
+        return jdbcTemplate.query(sql, ENTRY_ROW_MAPPER);
     }
 
     public Posting insertPosting(Long entryId, Long accountId, long amount, long balanceAfter) {

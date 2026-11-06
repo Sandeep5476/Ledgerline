@@ -17,9 +17,14 @@ import java.util.Map;
 public class TransferController {
 
     private final LedgerService ledgerService;
+    private final com.ledgerline.service.IdempotencyService idempotencyService;
 
-    public TransferController(LedgerService ledgerService) {
+    public TransferController(
+        LedgerService ledgerService,
+        com.ledgerline.service.IdempotencyService idempotencyService
+    ) {
         this.ledgerService = ledgerService;
+        this.idempotencyService = idempotencyService;
     }
 
     @PostMapping
@@ -28,40 +33,47 @@ public class TransferController {
         @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
         @AuthenticationPrincipal UserPrincipal principal
     ) {
-        // TODO: Task 3 - Idempotency key handling and deduplication
-
-        LedgerResult result = ledgerService.transfer(
-            request.fromAccountId(),
-            request.toAccountId(),
-            request.amount(),
+        return idempotencyService.execute(
+            idempotencyKey,
             principal.id(),
-            principal.role(),
-            request.reason(),
-            idempotencyKey
+            "POST",
+            "/api/transfers",
+            request,
+            () -> {
+                LedgerResult result = ledgerService.transfer(
+                    request.fromAccountId(),
+                    request.toAccountId(),
+                    request.amount(),
+                    principal.id(),
+                    principal.role(),
+                    request.reason(),
+                    idempotencyKey
+                );
+
+                if (result.success()) {
+                    return ResponseEntity.ok(Map.of(
+                        "status", "SUCCESS",
+                        "entryId", result.entry().id(),
+                        "kind", result.entry().kind(),
+                        "postings", result.postings()
+                    ));
+                }
+
+                HttpStatus status = switch (result.refusalCode()) {
+                    case UNAUTHORIZED, ACCOUNT_NOT_FOUND -> HttpStatus.NOT_FOUND;
+                    case INSUFFICIENT_FUNDS -> HttpStatus.UNPROCESSABLE_ENTITY;
+                    case INVALID_COMMAND -> HttpStatus.BAD_REQUEST;
+                    default -> HttpStatus.BAD_REQUEST;
+                };
+
+                return ResponseEntity.status(status).body(Map.of(
+                    "status", "REFUSED",
+                    "refusalCode", result.refusalCode(),
+                    "message", result.refusalReason(),
+                    "attemptId", result.attempt().id()
+                ));
+            }
         );
-
-        if (result.success()) {
-            return ResponseEntity.ok(Map.of(
-                "status", "SUCCESS",
-                "entryId", result.entry().id(),
-                "kind", result.entry().kind(),
-                "postings", result.postings()
-            ));
-        }
-
-        HttpStatus status = switch (result.refusalCode()) {
-            case UNAUTHORIZED, ACCOUNT_NOT_FOUND -> HttpStatus.NOT_FOUND;
-            case INSUFFICIENT_FUNDS -> HttpStatus.UNPROCESSABLE_ENTITY;
-            case INVALID_COMMAND -> HttpStatus.BAD_REQUEST;
-            default -> HttpStatus.BAD_REQUEST;
-        };
-
-        return ResponseEntity.status(status).body(Map.of(
-            "status", "REFUSED",
-            "refusalCode", result.refusalCode(),
-            "message", result.refusalReason(),
-            "attemptId", result.attempt().id()
-        ));
     }
 }
 

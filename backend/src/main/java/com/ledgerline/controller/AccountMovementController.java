@@ -2,14 +2,19 @@ package com.ledgerline.controller;
 
 import com.ledgerline.dto.AmountRequest;
 import com.ledgerline.dto.LedgerResult;
+import com.ledgerline.dto.StatementResponse;
 import com.ledgerline.security.UserPrincipal;
+import com.ledgerline.service.IdempotencyService;
 import com.ledgerline.service.LedgerService;
+import com.ledgerline.service.StatementService;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.util.Map;
 
 @RestController
@@ -17,9 +22,17 @@ import java.util.Map;
 public class AccountMovementController {
 
     private final LedgerService ledgerService;
+    private final IdempotencyService idempotencyService;
+    private final StatementService statementService;
 
-    public AccountMovementController(LedgerService ledgerService) {
+    public AccountMovementController(
+        LedgerService ledgerService,
+        IdempotencyService idempotencyService,
+        StatementService statementService
+    ) {
         this.ledgerService = ledgerService;
+        this.idempotencyService = idempotencyService;
+        this.statementService = statementService;
     }
 
     @PostMapping("/{id}/deposit")
@@ -29,18 +42,24 @@ public class AccountMovementController {
         @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
         @AuthenticationPrincipal UserPrincipal principal
     ) {
-        // TODO: Task 3 - Idempotency key handling and deduplication
-
-        LedgerResult result = ledgerService.deposit(
-            accountId,
-            request.amount(),
+        return idempotencyService.execute(
+            idempotencyKey,
             principal.id(),
-            principal.role(),
-            request.reason(),
-            idempotencyKey
+            "POST",
+            "/api/accounts/" + accountId + "/deposit",
+            request,
+            () -> {
+                LedgerResult result = ledgerService.deposit(
+                    accountId,
+                    request.amount(),
+                    principal.id(),
+                    principal.role(),
+                    request.reason(),
+                    idempotencyKey
+                );
+                return mapResultToResponse(result);
+            }
         );
-
-        return mapResultToResponse(result);
     }
 
     @PostMapping("/{id}/withdraw")
@@ -50,18 +69,45 @@ public class AccountMovementController {
         @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
         @AuthenticationPrincipal UserPrincipal principal
     ) {
-        // TODO: Task 3 - Idempotency key handling and deduplication
-
-        LedgerResult result = ledgerService.withdraw(
-            accountId,
-            request.amount(),
+        return idempotencyService.execute(
+            idempotencyKey,
             principal.id(),
-            principal.role(),
-            request.reason(),
-            idempotencyKey
+            "POST",
+            "/api/accounts/" + accountId + "/withdraw",
+            request,
+            () -> {
+                LedgerResult result = ledgerService.withdraw(
+                    accountId,
+                    request.amount(),
+                    principal.id(),
+                    principal.role(),
+                    request.reason(),
+                    idempotencyKey
+                );
+                return mapResultToResponse(result);
+            }
         );
+    }
 
-        return mapResultToResponse(result);
+    @GetMapping("/{id}/statement")
+    public ResponseEntity<StatementResponse> getStatement(
+        @PathVariable("id") Long accountId,
+        @RequestParam(value = "from", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
+        @RequestParam(value = "to", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
+        @RequestParam(value = "page", required = false, defaultValue = "0") Integer page,
+        @RequestParam(value = "size", required = false, defaultValue = "20") Integer size,
+        @AuthenticationPrincipal UserPrincipal principal
+    ) {
+        StatementResponse response = statementService.getStatement(
+            accountId,
+            from,
+            to,
+            page,
+            size,
+            principal.id(),
+            principal.role()
+        );
+        return ResponseEntity.ok(response);
     }
 
     private ResponseEntity<?> mapResultToResponse(LedgerResult result) {

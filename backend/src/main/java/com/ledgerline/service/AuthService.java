@@ -22,23 +22,28 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final AuditService auditService;
 
     public AuthService(
         UserRepository userRepository,
         PasswordEncoder passwordEncoder,
-        JwtService jwtService
+        JwtService jwtService,
+        AuditService auditService
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.auditService = auditService;
     }
 
     public LoginResponse login(LoginRequest request) {
-        Optional<User> userOptional = userRepository.findByUsername(request.username().trim());
+        String username = request.username() != null ? request.username().trim() : "";
+        Optional<User> userOptional = userRepository.findByUsername(username);
 
         if (userOptional.isEmpty()) {
             // Always run BCrypt calculation to normalize response timing
             passwordEncoder.matches(request.password(), DUMMY_BCRYPT_HASH);
+            auditService.logLoginFailure(username, "User not found");
             throw new BadCredentialsException("Invalid credentials");
         }
 
@@ -46,11 +51,14 @@ public class AuthService {
         boolean passwordMatches = passwordEncoder.matches(request.password(), user.passwordHash());
 
         if (!passwordMatches || !user.enabled()) {
+            auditService.logLoginFailure(username, "Invalid password or user disabled");
             throw new BadCredentialsException("Invalid credentials");
         }
 
         String token = jwtService.generateToken(user);
         UserDto userDto = new UserDto(user.id(), user.username(), user.role());
+
+        auditService.logLoginSuccess(user.id(), user.username());
 
         return new LoginResponse(token, "Bearer", 1800, userDto);
     }
