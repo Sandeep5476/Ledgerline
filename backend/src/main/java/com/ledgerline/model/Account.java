@@ -10,3 +10,4 @@ public record Account(
     long balance,
     Instant createdAt
 ) {}
+

@@ -8,3 +8,4 @@ public record ReverseRequest(
     @Size(max = 255, message = "Reason cannot exceed 255 characters")
     String reason
 ) {}
+

@@ -15,3 +15,4 @@ public record LedgerAttempt(
     Long balanceSnapshot,
     Instant createdAt
 ) {}
+

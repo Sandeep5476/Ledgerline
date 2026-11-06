@@ -8,3 +8,4 @@ public enum RefusalCode {
     ALREADY_REVERSED,
     REVERSAL_OVERDRAW
 }
+

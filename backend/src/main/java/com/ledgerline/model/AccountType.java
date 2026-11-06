@@ -5,3 +5,4 @@ public enum AccountType {
     EXTERNAL,
     SYSTEM
 }
+

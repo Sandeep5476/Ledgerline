@@ -13,3 +13,4 @@ public record LedgerCommand(
     String reason,
     String idempotencyKey
 ) {}
+

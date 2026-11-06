@@ -22,3 +22,4 @@ public record LedgerResult(
         return new LedgerResult(false, null, null, attempt, code, reason);
     }
 }
+

@@ -13,3 +13,4 @@ public record LedgerEntry(
     String prevHash,
     String hash
 ) {}
+

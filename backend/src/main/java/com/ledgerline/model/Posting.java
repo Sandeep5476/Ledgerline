@@ -10,3 +10,4 @@ public record Posting(
     long balanceAfter,
     Instant createdAt
 ) {}
+
