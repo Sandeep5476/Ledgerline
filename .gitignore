@@ -1,0 +1,20 @@
+# Dependencies & Build
+target/
+dist/
+node_modules/
+.tools/
+.m2/
+powershell.cmd
+
+# Environment & Secrets
+.env
+.env.local
+*.log
+
+# IDE & OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
