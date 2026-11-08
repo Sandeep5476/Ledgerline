@@ -1,0 +1,14 @@
+**/.git
+**/.gitignore
+**/node_modules
+**/dist
+**/target
+**/.tools
+**/.m2
+**/.vscode
+**/.idea
+**/*.log
+**/.env*
+docker-compose.yml
+MUTATION_CHECKS.md
+scripts/

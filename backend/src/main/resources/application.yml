@@ -19,14 +19,14 @@ spring:
       accept-float-as-int: false
 
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ledgerline}${DB_PARAMS:}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ledgerline}?sslmode=${DB_SSLMODE:prefer}${DB_PARAMS:}
     username: ${APP_DB_USER:ledger_app}
     password: ${APP_DB_PASSWORD:}
     driver-class-name: org.postgresql.Driver
 
   flyway:
     enabled: true
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ledgerline}${DB_PARAMS:}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ledgerline}?sslmode=${DB_SSLMODE:prefer}${DB_PARAMS:}
     user: ${DB_MIGRATION_USER:${DB_USER:ledger_owner}}
     password: ${DB_MIGRATION_PASSWORD:${DB_PASSWORD:}}
     locations: classpath:db/migration

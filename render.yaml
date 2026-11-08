@@ -1,0 +1,68 @@
+services:
+  - type: web
+    name: ledgerline
+    env: docker
+    dockerfilePath: Dockerfile
+    plan: free
+    region: oregon
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: PORT
+        value: 8080
+      - key: DB_HOST
+        fromDatabase:
+          name: ledgerline-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: ledgerline-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: ledgerline-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: ledgerline-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: ledgerline-db
+          property: password
+      - key: DB_MIGRATION_USER
+        fromDatabase:
+          name: ledgerline-db
+          property: user
+      - key: DB_MIGRATION_PASSWORD
+        fromDatabase:
+          name: ledgerline-db
+          property: password
+      - key: APP_DB_USER
+        fromDatabase:
+          name: ledgerline-db
+          property: user
+      - key: APP_DB_PASSWORD
+        fromDatabase:
+          name: ledgerline-db
+          property: password
+      - key: DB_SSLMODE
+        value: require
+      - key: TRUSTED_PROXY_ENABLED
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SEED_ADMIN_PASSWORD
+        generateValue: true
+      - key: SEED_HOLDER_PASSWORD
+        generateValue: true
+      - key: SEED_AUDITOR_PASSWORD
+        generateValue: true
+
+databases:
+  - name: ledgerline-db
+    plan: free
+    region: oregon
+    databaseName: ledgerline
+    user: ledger_owner
