@@ -48,12 +48,18 @@ public class RateLimiterService {
         @Value("${rate-limiting.trusted-proxy-enabled:false}") boolean trustedProxyEnabled,
         @Value("${rate-limiting.login-ip-capacity:10}") int loginIpCapacity,
         @Value("${rate-limiting.login-user-capacity:5}") int loginUserCapacity,
-        @Value("${rate-limiting.money-user-capacity:20}") int moneyUserCapacity
+        @Value("${rate-limiting.money-user-capacity:2000}") int moneyUserCapacity
     ) {
         this.trustedProxyEnabled = trustedProxyEnabled;
         this.loginIpCapacity = loginIpCapacity;
         this.loginUserCapacity = loginUserCapacity;
         this.moneyUserCapacity = moneyUserCapacity;
+    }
+
+    public void reset() {
+        loginIpBuckets.clear();
+        loginUserBuckets.clear();
+        moneyUserBuckets.clear();
     }
 
     public void checkLoginRateLimit(String clientIp, String username) {
