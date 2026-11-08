@@ -497,6 +497,7 @@ public class IdempotencyAndAuditIntegrationTest extends BasePostgresIntegrationT
         jdbcTemplate.execute("ALTER TABLE ledger_attempts ENABLE TRIGGER trg_no_delete_stmt_ledger_attempts");
 
         jdbcTemplate.execute("DELETE FROM idempotency_keys");
+        jdbcTemplate.execute("UPDATE accounts SET balance = 0");
     }
 }
 

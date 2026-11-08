@@ -25,10 +25,16 @@ public class IdempotencyService {
 
     private final IdempotencyRepository idempotencyRepository;
     private final ObjectMapper objectMapper;
+    private final RateLimiterService rateLimiterService;
 
-    public IdempotencyService(IdempotencyRepository idempotencyRepository, ObjectMapper objectMapper) {
+    public IdempotencyService(
+        IdempotencyRepository idempotencyRepository,
+        ObjectMapper objectMapper,
+        RateLimiterService rateLimiterService
+    ) {
         this.idempotencyRepository = idempotencyRepository;
         this.objectMapper = objectMapper;
+        this.rateLimiterService = rateLimiterService;
     }
 
     public void validateKey(String key) {
@@ -73,6 +79,9 @@ public class IdempotencyService {
         Supplier<ResponseEntity<?>> operation
     ) {
         validateKey(rawKey);
+
+        // Enforce user-level rate limiting on money movement operations
+        rateLimiterService.checkMoneyRateLimit(userId);
 
         String requestHash = CanonicalRequestHasher.computeRequestHash(method, path, userId, requestBody);
 

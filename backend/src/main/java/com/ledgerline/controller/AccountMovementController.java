@@ -1,9 +1,11 @@
 package com.ledgerline.controller;
 
+import com.ledgerline.dto.AccountDto;
 import com.ledgerline.dto.AmountRequest;
 import com.ledgerline.dto.LedgerResult;
 import com.ledgerline.dto.StatementResponse;
 import com.ledgerline.security.UserPrincipal;
+import com.ledgerline.service.AccountService;
 import com.ledgerline.service.IdempotencyService;
 import com.ledgerline.service.LedgerService;
 import com.ledgerline.service.StatementService;
@@ -11,10 +13,12 @@ import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -24,18 +28,35 @@ public class AccountMovementController {
     private final LedgerService ledgerService;
     private final IdempotencyService idempotencyService;
     private final StatementService statementService;
+    private final AccountService accountService;
 
     public AccountMovementController(
         LedgerService ledgerService,
         IdempotencyService idempotencyService,
-        StatementService statementService
+        StatementService statementService,
+        AccountService accountService
     ) {
         this.ledgerService = ledgerService;
         this.idempotencyService = idempotencyService;
         this.statementService = statementService;
+        this.accountService = accountService;
+    }
+
+    @GetMapping
+    public ResponseEntity<List<AccountDto>> getAccounts(@AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(accountService.getAccounts(principal.id(), principal.role()));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<AccountDto> getAccount(
+        @PathVariable("id") Long accountId,
+        @AuthenticationPrincipal UserPrincipal principal
+    ) {
+        return ResponseEntity.ok(accountService.getAccountById(accountId, principal.id(), principal.role()));
     }
 
     @PostMapping("/{id}/deposit")
+    @PreAuthorize("hasRole('HOLDER') or hasRole('ADMIN')")
     public ResponseEntity<?> deposit(
         @PathVariable("id") Long accountId,
         @Valid @RequestBody AmountRequest request,
@@ -63,6 +84,7 @@ public class AccountMovementController {
     }
 
     @PostMapping("/{id}/withdraw")
+    @PreAuthorize("hasRole('HOLDER') or hasRole('ADMIN')")
     public ResponseEntity<?> withdraw(
         @PathVariable("id") Long accountId,
         @Valid @RequestBody AmountRequest request,

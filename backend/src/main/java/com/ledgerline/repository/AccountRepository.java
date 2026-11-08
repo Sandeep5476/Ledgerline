@@ -101,5 +101,51 @@ public class AccountRepository {
         String sql = "UPDATE accounts SET balance = ? WHERE id = ?";
         jdbcTemplate.update(sql, newBalance, accountId);
     }
+
+    public List<Account> findAccountsByMember(Long userId) {
+        String sql = """
+            SELECT a.id, a.name, a.type, a.currency, a.balance, a.created_at
+            FROM accounts a
+            JOIN account_members am ON a.id = am.account_id
+            WHERE am.user_id = ?
+            ORDER BY a.id ASC
+            """;
+        return jdbcTemplate.query(sql, ACCOUNT_ROW_MAPPER, userId);
+    }
+
+    public List<Account> findAllAccounts() {
+        String sql = "SELECT id, name, type, currency, balance, created_at FROM accounts ORDER BY id ASC";
+        return jdbcTemplate.query(sql, ACCOUNT_ROW_MAPPER);
+    }
+
+    public record AccountWithMembership(
+        Account account,
+        boolean isMember
+    ) {}
+
+    public Optional<AccountWithMembership> findAccountWithMembership(Long accountId, Long userId) {
+        String sql = """
+            SELECT a.id, a.name, a.type, a.currency, a.balance, a.created_at,
+                   EXISTS(SELECT 1 FROM account_members am WHERE am.account_id = a.id AND am.user_id = ?) AS is_member
+            FROM accounts a
+            WHERE a.id = ?
+            """;
+        try {
+            return Optional.ofNullable(jdbcTemplate.queryForObject(sql, (rs, rowNum) -> {
+                Account acc = new Account(
+                    rs.getLong("id"),
+                    rs.getString("name"),
+                    AccountType.valueOf(rs.getString("type")),
+                    rs.getString("currency"),
+                    rs.getLong("balance"),
+                    rs.getTimestamp("created_at").toInstant()
+                );
+                boolean isMember = rs.getBoolean("is_member");
+                return new AccountWithMembership(acc, isMember);
+            }, userId, accountId));
+        } catch (EmptyResultDataAccessException e) {
+            return Optional.empty();
+        }
+    }
 }
 

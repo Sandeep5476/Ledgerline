@@ -28,6 +28,7 @@ public class TransferController {
     }
 
     @PostMapping
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('HOLDER') or hasRole('ADMIN')")
     public ResponseEntity<?> transfer(
         @Valid @RequestBody TransferRequest request,
         @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,

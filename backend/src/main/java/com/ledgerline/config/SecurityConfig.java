@@ -49,7 +49,9 @@ public class SecurityConfig {
             // CSRF protection is disabled ONLY because the application is fully stateless
             // and uses Bearer tokens in Authorization headers, making it immune to browser CSRF attacks.
             .csrf(AbstractHttpConfigurer::disable)
-            .cors(AbstractHttpConfigurer::disable)
+            // Same-origin only: The React SPA is bundled and served directly by Spring Boot.
+            // Disallows wildcard cross-origin resource sharing completely.
+            .cors(cors -> cors.configurationSource(request -> null))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .exceptionHandling(ex -> ex
                 .authenticationEntryPoint(authenticationEntryPoint)

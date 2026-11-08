@@ -23,21 +23,30 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuditService auditService;
+    private final RateLimiterService rateLimiterService;
 
     public AuthService(
         UserRepository userRepository,
         PasswordEncoder passwordEncoder,
         JwtService jwtService,
-        AuditService auditService
+        AuditService auditService,
+        RateLimiterService rateLimiterService
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.auditService = auditService;
+        this.rateLimiterService = rateLimiterService;
     }
 
     public LoginResponse login(LoginRequest request) {
+        return login(request, null);
+    }
+
+    public LoginResponse login(LoginRequest request, String clientIp) {
         String username = request.username() != null ? request.username().trim() : "";
+        rateLimiterService.checkLoginRateLimit(clientIp, username);
+
         Optional<User> userOptional = userRepository.findByUsername(username);
 
         if (userOptional.isEmpty()) {

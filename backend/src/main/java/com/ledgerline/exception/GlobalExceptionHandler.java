@@ -55,6 +55,19 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<Map<String, Object>> handleRateLimit(RateLimitExceededException ex) {
+        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+        headers.set("Retry-After", String.valueOf(ex.getRetryAfterSeconds()));
+        Map<String, Object> body = Map.of(
+            "timestamp", Instant.now().toString(),
+            "status", HttpStatus.TOO_MANY_REQUESTS.value(),
+            "error", "Too Many Requests",
+            "message", ex.getMessage()
+        );
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).headers(headers).body(body);
+    }
+
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<Map<String, Object>> handleNotFound(ResourceNotFoundException ex) {
         return buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage());
@@ -75,9 +88,15 @@ public class GlobalExceptionHandler {
         return buildErrorResponse(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());
     }
 
-    @ExceptionHandler({HttpMessageNotReadableException.class, MaxUploadSizeExceededException.class})
+    @ExceptionHandler({
+        HttpMessageNotReadableException.class,
+        MaxUploadSizeExceededException.class,
+        org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class,
+        jakarta.validation.ConstraintViolationException.class,
+        org.springframework.web.method.annotation.HandlerMethodValidationException.class
+    })
     public ResponseEntity<Map<String, Object>> handleMalformedOrOversized(Exception ex) {
-        return buildErrorResponse(HttpStatus.BAD_REQUEST, "Malformed request body or payload exceeds maximum allowed size");
+        return buildErrorResponse(HttpStatus.BAD_REQUEST, "Malformed request body, invalid parameter type, or payload exceeds maximum allowed size");
     }
 
     @ExceptionHandler(Exception.class)

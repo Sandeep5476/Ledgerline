@@ -279,6 +279,36 @@ public class LedgerService {
         return move(cmd);
     }
 
+    public LedgerResult adjust(Long accountId, long amount, boolean isCredit, Long adminId, UserRole adminRole, String reason, String idempotencyKey) {
+        if (adminRole != UserRole.ADMIN) {
+            LedgerCommand dummy = new LedgerCommand(EntryKind.ADJUSTMENT, null, null, amount, adminId, adminRole, reason, idempotencyKey);
+            return recordRefusal(dummy, null, RefusalCode.UNAUTHORIZED, "Adjustments are strictly restricted to ADMIN role");
+        }
+
+        if (reason == null || reason.isBlank()) {
+            LedgerCommand dummy = new LedgerCommand(EntryKind.ADJUSTMENT, null, null, amount, adminId, adminRole, reason, idempotencyKey);
+            return recordRefusal(dummy, null, RefusalCode.INVALID_COMMAND, "Adjustment reason is mandatory");
+        }
+
+        Account external = accountRepository.findExternalWorldAccount()
+            .orElseThrow(() -> new IllegalStateException("FATAL: External counterparty account not found in database"));
+
+        Long fromId = isCredit ? external.id() : accountId;
+        Long toId = isCredit ? accountId : external.id();
+
+        LedgerCommand cmd = new LedgerCommand(
+            EntryKind.ADJUSTMENT,
+            fromId,
+            toId,
+            amount,
+            adminId,
+            adminRole,
+            reason,
+            idempotencyKey
+        );
+        return move(cmd);
+    }
+
     private boolean isAuthorized(LedgerCommand cmd, Account fromAccount, Account toAccount) {
         if (cmd.callerRole() == UserRole.ADMIN) {
             return true;
