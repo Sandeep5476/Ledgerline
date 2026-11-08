@@ -9,6 +9,8 @@ powershell.cmd
 # Environment & Secrets
 .env
 .env.local
+.env.*
+!.env.example
 *.log
 
 # IDE & OS
