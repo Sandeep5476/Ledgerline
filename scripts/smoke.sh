@@ -22,12 +22,14 @@ AUDITOR_PASS="${SEED_AUDITOR_PASSWORD:-AuditorPassword_2026!}"
 
 # Helper function to generate UUID v4 in bash
 generate_uuid() {
-  if command -v uuidgen >/dev/null 2>&1; then
+  if command -v node >/dev/null 2>&1; then
+    node -e 'console.log(require("crypto").randomUUID())'
+  elif command -v uuidgen >/dev/null 2>&1; then
     uuidgen | tr '[:upper:]' '[:lower:]'
   elif [ -r /proc/sys/kernel/random/uuid ]; then
     cat /proc/sys/kernel/random/uuid
   else
-    python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null || od -x /dev/urandom | head -1 | awk '{OFS="-"; print $2$3,$4,$5,$6,$7$8$9}'
+    head -c 16 /dev/urandom | xxd -p
   fi
 }
 
@@ -104,7 +106,7 @@ if [ "${ACCOUNTS_CODE}" -ne 200 ]; then
 fi
 
 # Extract first account ID
-ACCOUNT_ID=$(echo "${ACCOUNTS_BODY}" | grep -o '"id":[0-9]*' | head -n1 | cut -d':' -f2)
+ACCOUNT_ID=$(echo "${ACCOUNTS_BODY}" | (grep -o '"id":[0-9]*' || true) | head -n1 | cut -d':' -f2)
 
 if [ -z "${ACCOUNT_ID}" ]; then
   echo "No existing account found. Creating account via Admin..."
@@ -113,7 +115,7 @@ if [ -z "${ACCOUNT_ID}" ]; then
     -H "Content-Type: application/json" \
     -d '{"name":"Smoke Test Account"}')
   CREATE_ACC_BODY=$(echo "${CREATE_ACC_RESP}" | sed '$d')
-  ACCOUNT_ID=$(echo "${CREATE_ACC_BODY}" | grep -o '"id":[0-9]*' | head -n1 | cut -d':' -f2)
+  ACCOUNT_ID=$(echo "${CREATE_ACC_BODY}" | (grep -o '"id":[0-9]*' || true) | head -n1 | cut -d':' -f2)
 
   # Grant membership to holder (user_id 2)
   curl -s -X POST "${BASE_URL}/api/admin/accounts/${ACCOUNT_ID}/members" \
