@@ -60,4 +60,27 @@ All routes enforce **deny-by-default**. Any endpoint not explicitly matched belo
 | `POST` | `/api/admin/entries/{id}/reverse` | `ADMIN` only | N/A (admin privilege required). Reverses entry `{id}` exactly once; respects non-negative rule. | `403 Forbidden` (for HOLDER, AUDITOR) |
 | `GET` | `/api/admin/verify` | `ADMIN`, `AUDITOR` | Read-only system integrity verification running in `REPEATABLE READ` snapshot. | `403 Forbidden` (for HOLDER) |
 
+---
+
+## Accepted-Risk List
+
+The following operational and architectural tradeoffs have been consciously accepted for LedgerLine:
+
+1. **Hash-Chain Advisory Lock Throughput**:
+   - *Risk*: To prevent forks in the cryptographic SHA-256 hash chains (`ledger_entries` and `audit_log`), appends acquire transaction-level PostgreSQL advisory locks (`pg_advisory_xact_lock`). This serializes chain appends across concurrent threads.
+   - *Reason Accepted*: In a financial double-entry ledger, cryptographic non-forking auditability is a non-negotiable correctness guarantee. The tradeoff caps peak transaction write throughput to single-database serial write speeds (thousands of TPS), which is more than sufficient for standard enterprise ledger workloads.
+
+2. **In-Memory Rate Limiting per Instance**:
+   - *Risk*: Bucket4j rate limiters are stored in JVM memory (`ConcurrentHashMap`). In a horizontally scaled cluster, limits apply per container instance rather than globally across all instances.
+   - *Reason Accepted*: Eliminates external Redis/network dependencies for single-instance and containerized environments. For enterprise horizontal scaling, Bucket4j can be switched to its Redis/Hazelcast proxy backend without altering limiter contract.
+
+3. **Free-Tier Cold Starts**:
+   - *Risk*: When deployed on cloud free tiers (e.g. Render Free), the web container spins down after 15 minutes of inactivity, causing initial cold start response times of 30-50 seconds.
+   - *Reason Accepted*: Standard behavior for zero-cost demo environments. Production deployments with paid tiers or background keep-alive pings remain continuously warm.
+
+4. **In-Memory JWT Lost on Page Refresh**:
+   - *Risk*: Storing the authentication token strictly in React component memory state causes the session to be cleared whenever the browser is refreshed or closed.
+   - *Reason Accepted*: Completely eliminates the primary vector for XSS-based token exfiltration (`localStorage`/`sessionStorage` harvesting). The tradeoff prioritizes maximum client-side credential protection over persistent session convenience.
+
+
 
